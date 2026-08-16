@@ -18,6 +18,7 @@ Volcengine ARK, vLLM, llama.cpp). Key quirks:
     keeps the behavior above.
 """
 
+import logging
 from typing import Any
 from urllib.parse import urlparse
 
@@ -53,6 +54,9 @@ def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
     if host == "ollama.com" or host.endswith(".ollama.com"):
         return True
     return "ollama" in host.split(".")
+
+
+logger = logging.getLogger(__name__)
 
 
 class CustomProfile(ProviderProfile):
@@ -122,7 +126,10 @@ class CustomProfile(ProviderProfile):
             _enabled = reasoning_config.get("enabled", True)
             if _effort == "none" or _enabled is False:
                 if _format == "none":
-                    pass
+                    logger.warning(
+                        "reasoning_format='none' suppresses the explicit reasoning "
+                        "disable request; the endpoint's server-side default applies"
+                    )
                 elif _format == "reasoning_object":
                     extra_body["reasoning"] = {"enabled": False}
                 else:
