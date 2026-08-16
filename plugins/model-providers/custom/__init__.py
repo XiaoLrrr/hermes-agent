@@ -1,11 +1,16 @@
 """Custom / Ollama provider profile with configurable reasoning wire formats."""
 
+import logging
+
 from typing import Any
 from urllib.parse import urlparse
 
 from agent.reasoning_effort import OPENAI_COMPAT_WIRE_EFFORTS, clamp_effort
 from providers import register_provider
 from providers.base import ProviderProfile
+
+
+logger = logging.getLogger(__name__)
 
 
 def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
@@ -52,6 +57,11 @@ class CustomProfile(ProviderProfile):
             if effort == "none" or reasoning_config.get("enabled", True) is False:
                 if reasoning_format == "reasoning_object":
                     extra_body["reasoning"] = {"enabled": False}
+                elif reasoning_format == "none":
+                    logger.warning(
+                        "reasoning_format='none' suppresses the explicit reasoning "
+                        "disable request; the endpoint's server-side default applies"
+                    )
                 elif reasoning_format != "none":
                     top_level["reasoning_effort"] = "none"
                 if reasoning_format != "none" and _looks_like_ollama_endpoint(ctx.get("base_url")):

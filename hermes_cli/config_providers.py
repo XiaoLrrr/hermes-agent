@@ -435,7 +435,11 @@ def get_custom_provider_reasoning_format(
     custom_providers: Optional[List[Dict[str, Any]]] = None,
     config: Optional[Dict[str, Any]] = None,
 ) -> Optional[str]:
-    """Return the validated reasoning wire format for a matching provider route."""
+    """Return the validated reasoning wire format for a matching provider route.
+
+    Matching entries are checked in compatibility-list order. Missing or invalid
+    values are skipped, and the first accepted format wins.
+    """
     if not base_url:
         return None
     for entry in _entries_for_route(base_url, custom_providers, config):
