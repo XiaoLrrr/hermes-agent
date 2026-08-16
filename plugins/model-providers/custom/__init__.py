@@ -1,5 +1,4 @@
-"""Custom / Ollama (local) provider profile: any endpoint registered as
-provider="custom" (Ollama, vLLM, llama.cpp, GLM-5.2 on ARK, …)."""
+"""Custom / Ollama provider profile with configurable reasoning wire formats."""
 
 from typing import Any
 from urllib.parse import urlparse
@@ -29,6 +28,17 @@ def _looks_like_ollama_endpoint(base_url: str | None) -> bool:
 class CustomProfile(ProviderProfile):
     """Custom/Ollama local provider — think=false and num_ctx support."""
 
+    @staticmethod
+    def _resolve_reasoning_format(base_url: Any) -> str | None:
+        if not isinstance(base_url, str) or not base_url:
+            return None
+        try:
+            from hermes_cli.config_providers import get_custom_provider_reasoning_format
+
+            return get_custom_provider_reasoning_format(base_url)
+        except Exception:
+            return None
+
     def build_api_kwargs_extras(
         self, *, reasoning_config: dict | None = None, ollama_num_ctx: int | None = None, **ctx: Any
     ) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -36,21 +46,22 @@ class CustomProfile(ProviderProfile):
         top_level: dict[str, Any] = {}
         if ollama_num_ctx:
             extra_body["options"] = {"num_ctx": ollama_num_ctx}
-        # disabled -> top-level reasoning_effort="none" (Ollama's /v1 ignores
-        # extra_body.think) plus think=False only on Ollama URLs; enabled+effort ->
-        # top-level reasoning_effort clamped to the OpenAI-compat wire (GLM/ARK,
-        # vLLM and SGLang all top out at "max"; "ultra" verbatim 400s); enabled
-        # without effort -> omit so the server default applies. Never emit
-        # think=True (Ollama-only flag).
         if reasoning_config and isinstance(reasoning_config, dict):
             effort = (reasoning_config.get("effort") or "").strip().lower()
+            reasoning_format = self._resolve_reasoning_format(ctx.get("base_url"))
             if effort == "none" or reasoning_config.get("enabled", True) is False:
-                # See #14820.
-                top_level["reasoning_effort"] = "none"
-                if _looks_like_ollama_endpoint(ctx.get("base_url")):
+                if reasoning_format == "reasoning_object":
+                    extra_body["reasoning"] = {"enabled": False}
+                elif reasoning_format != "none":
+                    top_level["reasoning_effort"] = "none"
+                if reasoning_format != "none" and _looks_like_ollama_endpoint(ctx.get("base_url")):
                     extra_body["think"] = False
             elif effort:
-                top_level["reasoning_effort"] = clamp_effort(effort, OPENAI_COMPAT_WIRE_EFFORTS)
+                if reasoning_format == "reasoning_object":
+                    extra_body["reasoning"] = {"enabled": True, "effort": effort}
+                elif reasoning_format != "none":
+                    top_level["reasoning_effort"] = clamp_effort(
+                        effort, OPENAI_COMPAT_WIRE_EFFORTS)
         return extra_body, top_level
 
     def fetch_models(
