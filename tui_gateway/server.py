@@ -7766,6 +7766,20 @@ def _session_info(agent, session: dict | None = None) -> dict:
     pending_switch = (session or {}).get("pending_model_switch") or {}
     pending_model = str(pending_switch.get("display_model") or "").strip()
     pending_provider = str(pending_switch.get("display_provider") or "").strip()
+    reported_model = pending_model or mirror.get("model", getattr(agent, "model", ""))
+    reported_provider = pending_provider or mirror.get(
+        "provider", getattr(agent, "provider", "")
+    )
+    if str(reported_provider).strip().lower() == "custom":
+        try:
+            from hermes_cli.runtime_provider import canonical_custom_identity
+
+            reported_provider = canonical_custom_identity(
+                base_url=str(getattr(agent, "base_url", "") or "") or None,
+                model=str(reported_model or "") or None,
+            ) or reported_provider
+        except Exception:
+            logger.debug("custom session-info identity recovery failed", exc_info=True)
     # Epoch seconds the current turn started, or None when idle. Lets the
     # desktop preserve the turn-elapsed timer across session switches (cold
     # resume path) instead of resetting it to 0:00.
@@ -7777,9 +7791,8 @@ def _session_info(agent, session: dict | None = None) -> dict:
     )
 
     info: dict = {
-        "model": pending_model or mirror.get("model", getattr(agent, "model", "")),
-        "provider": pending_provider
-        or mirror.get("provider", getattr(agent, "provider", "")),
+        "model": reported_model,
+        "provider": reported_provider,
         "reasoning_effort": reasoning_effort,
         "service_tier": service_tier,
         "fast": service_tier == "priority",
