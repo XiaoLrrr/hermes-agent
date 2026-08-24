@@ -1995,6 +1995,19 @@ def _reasoning_config_for_wire(agent):
     return cfg
 
 
+def _get_request_provider_profile(provider: str):
+    """Resolve built-in and named custom providers to their request profile."""
+    from providers import get_provider_profile
+
+    profile = get_provider_profile(provider)
+    if profile is None:
+        from hermes_cli.runtime_provider import _get_named_custom_provider
+
+        if _get_named_custom_provider(provider) is not None:
+            profile = get_provider_profile("custom")
+    return profile
+
+
 def build_api_kwargs(agent, api_messages: list, tools_for_api: list | None = None) -> dict:
     """Build the keyword arguments dict for the active API mode.
 
@@ -2263,8 +2276,7 @@ def _build_api_kwargs_for_mode(agent, api_messages: list, tools_for_api: list | 
     # Profiles handle per-provider quirks via hooks. When a profile is
     # found, delegate fully; otherwise fall through to the legacy flag path.
     try:
-        from providers import get_provider_profile
-        _profile = get_provider_profile(agent.provider)
+        _profile = _get_request_provider_profile(agent.provider)
     except Exception:
         _profile = None
 
@@ -3385,9 +3397,7 @@ def handle_max_iterations(agent, messages: list, api_call_count: int) -> str:
             provider_preferences = _provider_preferences_for_agent(agent)
             profile_extra_body = {}
             try:
-                from providers import get_provider_profile
-
-                provider_profile = get_provider_profile(agent.provider)
+                provider_profile = _get_request_provider_profile(agent.provider)
                 if provider_profile is not None:
                     profile_extra_body = provider_profile.build_extra_body(
                         session_id=getattr(agent, "session_id", None),
