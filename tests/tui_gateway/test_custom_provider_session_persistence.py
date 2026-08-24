@@ -103,6 +103,15 @@ class TestRuntimeModelConfigPersistsEntryIdentity:
 
         assert _runtime_model_config(agent)["provider"] == "anthropic"
 
+    def test_session_info_reports_entry_identity(self, monkeypatch):
+        monkeypatch.setattr(rp, "load_config", lambda: LEGACY_LIST_CONFIG)
+
+        from tui_gateway.server import _session_info
+
+        info = _session_info(_custom_agent())
+
+        assert info["provider"] == "custom:mimo-v2.5-pro"
+
 
 def _make_agent_with_override(override, monkeypatch, config, model_cfg=None):
     """Run _make_agent through the REAL resolve_runtime_provider against a
@@ -845,5 +854,4 @@ class TestRuntimeModelConfigDropsStaleKeys:
         config = _runtime_model_config(_agent_like(provider="nous"), None)
 
         assert config == {"model": "deepseek/deepseek-v4-flash-0731", "provider": "nous"}
-
 
