@@ -1276,6 +1276,19 @@ def _reasoning_config_for_wire(agent):
     return cfg
 
 
+def _get_request_provider_profile(provider: str):
+    """Resolve built-in and named custom providers to their request profile."""
+    from providers import get_provider_profile
+
+    profile = get_provider_profile(provider)
+    if profile is None:
+        from hermes_cli.runtime_provider import _get_named_custom_provider
+
+        if _get_named_custom_provider(provider) is not None:
+            profile = get_provider_profile("custom")
+    return profile
+
+
 def _alias_tool_search_bridge_for_xai(agent, transport, tools_for_api):
     """xAI chat-completions reserves ``tool_search`` and 400s when the bridge declares
     it (#95003): rename the wire declaration; ``normalize_response`` maps calls back
@@ -1393,8 +1406,7 @@ def _build_chat_completions_kwargs(agent, api_messages, tools_for_api, reasoning
     _qwen_meta = {"sessionId": agent.session_id or "hermes", "promptId": str(uuid.uuid4())} if _is_qwen else None
     _profile = None
     with contextlib.suppress(Exception):
-        from providers import get_provider_profile
-        _profile = get_provider_profile(agent.provider)
+        _profile = _get_request_provider_profile(agent.provider)
 
     _ephemeral_out = _consume_ephemeral_max_output(agent)
     # Strip image parts for non-vision models on BOTH paths (registered
