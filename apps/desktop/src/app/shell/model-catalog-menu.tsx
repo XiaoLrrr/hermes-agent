@@ -26,7 +26,7 @@ import { useI18n } from '@/i18n'
 import { isSubmitEnter } from '@/lib/ime'
 import { catalogProviderMatches, modelOptionsQueryKey, requestModelOptions } from '@/lib/model-options'
 import { displayModelName, modelDisplayParts } from '@/lib/model-status-label'
-import { reasoningEffortLabel } from '@/lib/reasoning-effort'
+import { reasoningEffortLabel, supportedReasoningEffort } from '@/lib/reasoning-effort'
 import { foldIncludes, normalize } from '@/lib/text'
 import { useStoreSelector } from '@/lib/use-session-slice'
 import { cn } from '@/lib/utils'
@@ -300,7 +300,9 @@ export function ModelCatalogMenu({
 
     controller.applyPreset(
       {
-        effort: (caps?.reasoning ?? true) ? (preset.effort ?? defaultEffort) : undefined,
+        effort: (caps?.reasoning ?? true)
+          ? supportedReasoningEffort(preset.effort ?? defaultEffort, caps?.reasoning_efforts)
+          : undefined,
         fast: (caps?.fast ?? false) ? (preset.fast ?? false) : undefined
       },
       { model: family.id, provider: provider.slug }
@@ -589,6 +591,7 @@ export function ModelCatalogMenu({
                           }
                           provider={group.provider.slug}
                           reasoning={caps?.reasoning ?? true}
+                          reasoningEfforts={caps?.reasoning_efforts}
                         />
                       </DropdownMenuSub>
                     )
