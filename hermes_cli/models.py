@@ -2321,10 +2321,23 @@ def probe_api_models(
             continue
         if _neg_key is not None:
             _probe_neg_cache.pop(_neg_key, None)
-        return _probe_result(
-            [m.get("id", "") for m in data.get("data", [])], url, candidate_base.rstrip("/"),
+        entries = data.get("data", [])
+        result = _probe_result(
+            [m.get("id", "") for m in entries], url, candidate_base.rstrip("/"),
             alternate_base if alternate_base != candidate_base else normalized, is_fallback)
-
+        reasoning_efforts = {}
+        for item in entries:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            raw_efforts = item.get("reasoning_efforts")
+            if not isinstance(raw_efforts, list):
+                continue
+            values = [option.get("value") if isinstance(option, dict) else option for option in raw_efforts]
+            efforts = [value for value in values if isinstance(value, str) and value]
+            if efforts:
+                reasoning_efforts[str(item["id"])] = efforts
+        result["reasoning_efforts"] = reasoning_efforts
+        return result
     if _neg_key is not None and not reachable:
         _probe_neg_cache[_neg_key] = time.monotonic()
     return _probe_result(
