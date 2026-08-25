@@ -31,6 +31,7 @@ function renderSubmenu(opts: {
   onSelectModel?: (model: string) => void
   onSetOptions: (patch: { effort?: string; fast?: boolean }) => void
   reasoning: boolean
+  reasoningEfforts?: string[]
 }) {
   return render(
     <DropdownMenu open>
@@ -47,6 +48,7 @@ function renderSubmenu(opts: {
             onSetOptions={opts.onSetOptions}
             provider="p1"
             reasoning={opts.reasoning}
+            reasoningEfforts={opts.reasoningEfforts}
           />
         </DropdownMenuSub>
       </DropdownMenuContent>
@@ -92,6 +94,19 @@ describe('ModelEditSubmenu reports edits without performing them', () => {
     fireEvent.click(screen.getByRole('switch'))
 
     expect(onSetOptions).toHaveBeenCalledWith({ effort: 'high' })
+  })
+
+  it('shows only efforts supported by the model', () => {
+    renderSubmenu({
+      fastControl: { kind: 'none' },
+      onSetOptions: vi.fn(),
+      reasoning: true,
+      reasoningEfforts: ['high', 'max']
+    })
+
+    expect(screen.getByRole('menuitemradio', { name: 'High' })).toBeTruthy()
+    expect(screen.getByRole('menuitemradio', { name: 'Max' })).toBeTruthy()
+    expect(screen.queryByRole('menuitemradio', { name: 'Low' })).toBeNull()
   })
 
   it('variant fast: swaps the model only when the row is active', () => {
