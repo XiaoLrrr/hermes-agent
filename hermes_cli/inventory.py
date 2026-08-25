@@ -140,7 +140,7 @@ def build_models_payload(
     if pricing:
         _apply_pricing(rows, force_fresh_nous_tier=force_fresh_nous_tier, cached_only=pricing_cache_only)
     if capabilities:
-        _apply_capabilities(rows)
+        _apply_capabilities(rows, ctx)
     if featured:
         _apply_featured(rows)
     _apply_custom_aliases(rows)
@@ -269,12 +269,12 @@ def _reasoning_catalog_reader(slug: str):
     return read
 
 
-def _apply_capabilities(rows: list[dict]) -> None:
+def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
     """Attach ``{model: {fast, reasoning, ...}}`` per row. ``reasoning`` defaults True when the catalog is
     silent (the dial is a no-op on models that ignore it; hiding it from a capable model is worse). A
     serving aggregator's detail overrides models.dev (adds ``can_disable_reasoning``). ``supported_efforts``
     is deliberately NOT forwarded — it under-reports levels that work."""
-    from hermes_cli.models import model_supports_fast_mode
+    from hermes_cli.models import model_supports_fast_mode, probe_api_models
 
     try:
         from agent.models_dev import get_model_capabilities
@@ -285,6 +285,23 @@ def _apply_capabilities(rows: list[dict]) -> None:
         slug = row.get("slug") or ""
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
+        provider_cfg = ctx.user_providers.get(slug, {}) if isinstance(ctx.user_providers, dict) else {}
+        configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
+        configured_efforts = {
+            model: metadata["reasoning_efforts"]
+            for model, metadata in configured_models.items()
+            if isinstance(metadata, dict) and isinstance(metadata.get("reasoning_efforts"), list)
+        } if isinstance(configured_models, dict) else {}
+        live_efforts: dict[str, list[str]] = {}
+        if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
+            try:
+                probe = probe_api_models(
+                    provider_cfg.get("api_key"), row["api_url"],
+                    api_mode=provider_cfg.get("api_mode"),
+                    request_headers=provider_cfg.get("extra_headers"))
+                live_efforts = probe.get("reasoning_efforts") or {}
+            except Exception:
+                pass
 
         for model in row.get("models") or []:
             reasoning = True
@@ -297,6 +314,10 @@ def _apply_capabilities(rows: list[dict]) -> None:
                     reasoning = True
 
             entry: dict[str, Any] = {"fast": bool(model_supports_fast_mode(model)), "reasoning": reasoning}
+            if model in live_efforts:
+                entry["reasoning_efforts"] = live_efforts[model]
+            if model in configured_efforts:
+                entry["reasoning_efforts"] = configured_efforts[model]
 
             if reasoning and read_reasoning_catalog is not None:
                 try:
