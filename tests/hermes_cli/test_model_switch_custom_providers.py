@@ -1535,6 +1535,44 @@ def test_save_discovered_models_preserves_dict_form(monkeypatch):
     )
 
 
+def test_save_discovered_models_replaces_keyed_provider_metadata(monkeypatch):
+    from hermes_cli.model_switch_providers import _save_discovered_models_to_config
+
+    config = {
+        "providers": {
+            "command": {
+                "base_url": "http://router.test/v1",
+                "key_env": "COMMAND_API_KEY",
+                "models": {"stale": {"reasoning_efforts": ["medium"]}},
+            }
+        }
+    }
+    saved = []
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: config)
+    monkeypatch.setattr("hermes_cli.config.save_config", lambda value: saved.append(value))
+
+    metadata = {
+        "deepseek": {
+            "context_length": 1000000,
+            "supports_reasoning": True,
+            "reasoning_efforts": ["low", "high", "max"],
+        },
+        "plain": {"supports_reasoning": False},
+    }
+    _save_discovered_models_to_config(
+        "http://router.test/v1",
+        ["deepseek", "plain"],
+        provider_slug="command",
+        model_metadata=metadata,
+    )
+
+    command = saved[0]["providers"]["command"]
+    assert command["base_url"] == "http://router.test/v1"
+    assert command["key_env"] == "COMMAND_API_KEY"
+    assert command["models"] == metadata
+    assert command["models_discovered"] is True
+
+
 def test_model_flow_named_custom_persists_discovered_models(monkeypatch):
     """The ``hermes model`` named-custom-provider flow persists the discovered
     catalog back to the entry's ``models:`` list.
