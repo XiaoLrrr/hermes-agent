@@ -518,6 +518,7 @@ export interface ModelCapabilities {
   can_disable_reasoning?: boolean
   fast: boolean
   reasoning: boolean
+  reasoning_efforts?: string[]
 }
 
 export interface ModelOptionsResponse {
