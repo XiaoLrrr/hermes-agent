@@ -487,7 +487,7 @@ def _reasoning_catalog_reader(slug: str):
     return None
 
 
-def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
+def _apply_capabilities(rows: list[dict], ctx: ConfigContext | None = None) -> None:
     """Attach per-model option support, including the actual effort ladder.
 
     `fast` mirrors ``model_supports_fast_mode`` (the same gate the runtime
@@ -522,7 +522,8 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
         live_efforts: dict[str, list[str]] = {}
-        provider_cfg = ctx.user_providers.get(slug, {}) if isinstance(ctx.user_providers, dict) else {}
+        user_providers = ctx.user_providers if ctx and isinstance(ctx.user_providers, dict) else {}
+        provider_cfg = user_providers.get(slug, {})
         configured_efforts: dict[str, list[str]] = {}
         configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
         if isinstance(configured_models, dict):
@@ -533,8 +534,10 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
             }
         if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
             try:
+                from hermes_cli.fallback_config import resolve_entry_api_key
+
                 probe = probe_api_models(
-                    provider_cfg.get("api_key"),
+                    resolve_entry_api_key(provider_cfg),
                     row["api_url"],
                     api_mode=provider_cfg.get("api_mode"),
                     request_headers=provider_cfg.get("extra_headers"),
