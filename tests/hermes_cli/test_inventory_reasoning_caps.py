@@ -157,16 +157,31 @@ def test_catalog_failure_never_breaks_the_picker(monkeypatch):
     assert caps["reasoning"] is True
 
 
-def test_custom_provider_efforts_resolve_key_env(monkeypatch):
-    """Live custom-provider metadata uses the same scoped key as model discovery."""
+def test_custom_provider_live_metadata_replaces_config(monkeypatch):
+    """Live endpoint metadata wins, refreshes the row, and persists by slug."""
     monkeypatch.setenv("COMMAND_API_KEY", "secret")
     monkeypatch.setattr(models_mod, "model_supports_fast_mode", lambda model: False)
+    saved = []
 
     def _probe(api_key, *_args, **_kwargs):
         assert api_key == "secret"
-        return {"reasoning_efforts": {"cmc/deepseek": ["low", "high", "max"]}}
+        return {
+            "models": ["cmc/deepseek", "cmc/plain"],
+            "model_metadata": {
+                "cmc/deepseek": {
+                    "supports_reasoning": True,
+                    "reasoning_efforts": ["low", "high", "max"],
+                    "can_disable_reasoning": True,
+                },
+                "cmc/plain": {"supports_reasoning": False},
+            },
+        }
 
     monkeypatch.setattr(models_mod, "probe_api_models", _probe)
+    monkeypatch.setattr(
+        "hermes_cli.model_switch._save_discovered_models_to_config",
+        lambda *args, **kwargs: saved.append((args, kwargs)),
+    )
     ctx = inv.ConfigContext(
         current_provider="command",
         current_model="cmc/deepseek",
@@ -175,6 +190,10 @@ def test_custom_provider_efforts_resolve_key_env(monkeypatch):
             "command": {
                 "base_url": "http://router.test/v1",
                 "key_env": "COMMAND_API_KEY",
+                "models": {
+                    "cmc/deepseek": {"reasoning_efforts": ["medium"]},
+                    "stale": {"supports_reasoning": True},
+                },
             }
         },
         custom_providers=[],
@@ -184,14 +203,16 @@ def test_custom_provider_efforts_resolve_key_env(monkeypatch):
             "slug": "command",
             "api_url": "http://router.test/v1",
             "is_user_defined": True,
-            "models": ["cmc/deepseek"],
+            "models": ["cmc/deepseek", "stale"],
         }
     ]
 
     inv._apply_capabilities(rows, ctx)
 
-    assert rows[0]["capabilities"]["cmc/deepseek"]["reasoning_efforts"] == [
-        "low",
-        "high",
-        "max",
-    ]
+    assert rows[0]["models"] == ["cmc/deepseek", "cmc/plain"]
+    assert rows[0]["total_models"] == 2
+    assert rows[0]["capabilities"]["cmc/deepseek"]["reasoning_efforts"] == ["low", "high", "max"]
+    assert rows[0]["capabilities"]["cmc/plain"]["reasoning"] is False
+    assert "reasoning_efforts" not in rows[0]["capabilities"]["cmc/plain"]
+    assert saved[0][1]["provider_slug"] == "command"
+    assert saved[0][1]["model_metadata"]["cmc/plain"] == {"supports_reasoning": False}

@@ -521,20 +521,15 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext | None = None) -> N
         slug = row.get("slug") or ""
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
-        live_efforts: dict[str, list[str]] = {}
         user_providers = ctx.user_providers if ctx and isinstance(ctx.user_providers, dict) else {}
         provider_cfg = user_providers.get(slug, {})
-        configured_efforts: dict[str, list[str]] = {}
         configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
-        if isinstance(configured_models, dict):
-            configured_efforts = {
-                model: metadata["reasoning_efforts"]
-                for model, metadata in configured_models.items()
-                if isinstance(metadata, dict) and isinstance(metadata.get("reasoning_efforts"), list)
-            }
+        configured_models = configured_models if isinstance(configured_models, dict) else {}
+        live_metadata: dict[str, dict[str, Any]] = {}
         if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
             try:
                 from hermes_cli.fallback_config import resolve_entry_api_key
+                from hermes_cli.model_switch import _save_discovered_models_to_config
 
                 probe = probe_api_models(
                     resolve_entry_api_key(provider_cfg),
@@ -542,7 +537,19 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext | None = None) -> N
                     api_mode=provider_cfg.get("api_mode"),
                     request_headers=provider_cfg.get("extra_headers"),
                 )
-                live_efforts = probe.get("reasoning_efforts") or {}
+                live_models = probe.get("models")
+                live_metadata = probe.get("model_metadata") or {}
+                if isinstance(live_models, list) and live_models:
+                    row["models"] = live_models
+                    row["total_models"] = len(live_models)
+                    _save_discovered_models_to_config(
+                        row["api_url"],
+                        live_models,
+                        api_mode=provider_cfg.get("api_mode"),
+                        headers=provider_cfg.get("extra_headers"),
+                        provider_slug=slug,
+                        model_metadata=live_metadata,
+                    )
             except Exception:
                 pass
 
@@ -556,12 +563,19 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext | None = None) -> N
                 except Exception:
                     reasoning = True
 
+            metadata = live_metadata.get(model, configured_models.get(model, {}))
+            metadata = metadata if isinstance(metadata, dict) else {}
+            if isinstance(metadata.get("supports_reasoning"), bool):
+                reasoning = metadata["supports_reasoning"]
+
             entry: dict[str, Any] = {
                 "fast": bool(model_supports_fast_mode(model)),
                 "reasoning": reasoning,
-                **({"reasoning_efforts": live_efforts[model]} if model in live_efforts else {}),
-                **({"reasoning_efforts": configured_efforts[model]} if model in configured_efforts else {}),
             }
+            if reasoning and isinstance(metadata.get("reasoning_efforts"), list):
+                entry["reasoning_efforts"] = metadata["reasoning_efforts"]
+            if reasoning and isinstance(metadata.get("can_disable_reasoning"), bool):
+                entry["can_disable_reasoning"] = metadata["can_disable_reasoning"]
 
             if reasoning and read_reasoning_catalog is not None:
                 try:

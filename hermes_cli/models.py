@@ -6395,6 +6395,59 @@ def github_model_reasoning_efforts(
     return _github_reasoning_efforts_for_model_id(str(model_id or normalized))
 
 
+def _api_model_metadata(item: dict[str, Any]) -> dict[str, Any]:
+    """Normalize the extended model metadata published by gateways like 9Router."""
+    caps = item.get("capabilities")
+    caps = caps if isinstance(caps, dict) else {}
+
+    raw_modalities = item.get("input_modalities")
+    modalities = list(dict.fromkeys(
+        value.strip().lower()
+        for value in (raw_modalities if isinstance(raw_modalities, list) else [])
+        if isinstance(value, str) and value.strip()
+    ))
+    raw_efforts = item.get("reasoning_efforts")
+    values = [
+        option.get("value") if isinstance(option, dict) else option
+        for option in (raw_efforts if isinstance(raw_efforts, list) else [])
+    ]
+    efforts = list(dict.fromkeys(
+        value.strip().lower()
+        for value in values
+        if isinstance(value, str) and value.strip().lower() not in {"", "none"}
+    ))
+
+    metadata: dict[str, Any] = {}
+    for key, value in (
+        ("context_length", item.get("context_length")),
+        ("max_output_tokens", item.get("max_output_tokens")),
+    ):
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            metadata[key] = value
+    if modalities:
+        metadata["input_modalities"] = modalities
+
+    for key, value in (
+        ("supports_vision", caps.get("vision")),
+        ("supports_tools", caps.get("tools")),
+        ("supports_reasoning", caps.get("reasoning")),
+    ):
+        if isinstance(value, bool):
+            metadata[key] = value
+
+    if metadata.get("supports_reasoning") is True:
+        if efforts:
+            metadata["reasoning_efforts"] = efforts
+        reasoning = item.get("reasoning")
+        mandatory = reasoning.get("mandatory") if isinstance(reasoning, dict) else None
+        can_disable = caps.get("thinkingCanDisable")
+        if isinstance(mandatory, bool):
+            metadata["can_disable_reasoning"] = not mandatory
+        elif isinstance(can_disable, bool):
+            metadata["can_disable_reasoning"] = can_disable
+    return metadata
+
+
 def probe_api_models(
     api_key: Optional[str],
     base_url: Optional[str],
@@ -6471,23 +6524,14 @@ def probe_api_models(
             with _urlopen_model_catalog_request(req, **_open_kwargs) as resp:
                 data = json.loads(resp.read().decode())
                 entries = data.get("data", [])
-                reasoning_efforts = {}
+                model_metadata: dict[str, dict[str, Any]] = {}
                 for item in entries:
                     if not isinstance(item, dict) or not item.get("id"):
                         continue
-                    raw_efforts = item.get("reasoning_efforts")
-                    if not isinstance(raw_efforts, list):
-                        continue
-                    values = [
-                        option.get("value") if isinstance(option, dict) else option
-                        for option in raw_efforts
-                    ]
-                    efforts = [value for value in values if isinstance(value, str) and value]
-                    if efforts:
-                        reasoning_efforts[str(item["id"])] = efforts
+                    model_metadata[str(item["id"])] = _api_model_metadata(item)
                 return {
-                    "models": [m.get("id", "") for m in entries],
-                    "reasoning_efforts": reasoning_efforts,
+                    "models": list(model_metadata),
+                    "model_metadata": model_metadata,
                     "probed_url": url,
                     "resolved_base_url": candidate_base.rstrip("/"),
                     "suggested_base_url": alternate_base if alternate_base != candidate_base else normalized,
