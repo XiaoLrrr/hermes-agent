@@ -269,7 +269,7 @@ def build_models_payload(
     if pricing:
         _apply_pricing(rows, force_fresh_nous_tier=force_fresh_nous_tier)
     if capabilities:
-        _apply_capabilities(rows)
+        _apply_capabilities(rows, ctx)
     if featured:
         _apply_featured(rows)
     _apply_custom_aliases(rows)
@@ -428,8 +428,8 @@ def _reasoning_catalog_reader(slug: str):
     return None
 
 
-def _apply_capabilities(rows: list[dict]) -> None:
-    """Attach a ``{model: {fast, reasoning, ...}}`` map to each provider row.
+def _apply_capabilities(rows: list[dict], ctx: Optional[ConfigContext] = None) -> None:
+    """Attach per-model option support, including the actual effort ladder.
 
     `fast` mirrors ``model_supports_fast_mode`` (the same gate the runtime
     enforces). `reasoning` comes from the models.dev catalog when known and
@@ -451,7 +451,7 @@ def _apply_capabilities(rows: list[dict]) -> None:
     ``minimal`` at its lowest thinking), so filtering the picker by that list
     would hide levels that demonstrably work.
     """
-    from hermes_cli.models import model_supports_fast_mode
+    from hermes_cli.models import model_supports_fast_mode, probe_api_models
 
     try:
         from agent.models_dev import get_model_capabilities
@@ -462,6 +462,35 @@ def _apply_capabilities(rows: list[dict]) -> None:
         slug = row.get("slug") or ""
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
+        live_metadata: dict[str, dict[str, Any]] = {}
+        provider_cfg = (
+            ctx.user_providers.get(slug, {})
+            if ctx is not None and isinstance(ctx.user_providers, dict)
+            else {}
+        )
+        configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
+        if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
+            try:
+                probe = probe_api_models(
+                    provider_cfg.get("api_key"),
+                    row["api_url"],
+                    api_mode=provider_cfg.get("api_mode"),
+                    request_headers=provider_cfg.get("extra_headers"),
+                )
+                live_metadata = probe.get("model_metadata") or {}
+                if probe.get("models"):
+                    from hermes_cli.model_switch import _save_discovered_models_to_config
+
+                    _save_discovered_models_to_config(
+                        row["api_url"],
+                        probe["models"],
+                        api_mode=provider_cfg.get("api_mode"),
+                        headers=provider_cfg.get("extra_headers"),
+                        provider_slug=slug,
+                        model_metadata=live_metadata,
+                    )
+            except Exception:
+                pass
 
         for model in row.get("models") or []:
             reasoning = True
@@ -473,10 +502,34 @@ def _apply_capabilities(rows: list[dict]) -> None:
                 except Exception:
                     reasoning = True
 
+            configured_metadata = (
+                configured_models.get(model)
+                if isinstance(configured_models, dict)
+                else None
+            )
+            model_metadata = (
+                dict(live_metadata[model])
+                if isinstance(live_metadata.get(model), dict)
+                else dict(configured_metadata)
+                if isinstance(configured_metadata, dict)
+                else {}
+            )
+            if isinstance(model_metadata.get("reasoning"), bool):
+                reasoning = model_metadata["reasoning"]
+
             entry: dict[str, Any] = {
                 "fast": bool(model_supports_fast_mode(model)),
                 "reasoning": reasoning,
             }
+            for key in (
+                "reasoning_efforts",
+                "can_disable_reasoning",
+                "context_length",
+                "max_output_tokens",
+                "supports_vision",
+            ):
+                if key in model_metadata:
+                    entry[key] = model_metadata[key]
 
             if reasoning and read_reasoning_catalog is not None:
                 try:

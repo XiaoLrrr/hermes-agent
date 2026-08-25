@@ -169,8 +169,10 @@ def _save_discovered_models_to_config(
     *,
     api_mode: Optional[str] = None,
     headers: Optional[dict[str, str]] = None,
+    provider_slug: Optional[str] = None,
+    model_metadata: Optional[dict[str, dict[str, Any]]] = None,
 ) -> None:
-    """Persist discovered models into ``custom_providers`` in config.yaml.
+    """Persist discovered models into ``providers`` / ``custom_providers``.
 
     Called after a successful ``/v1/models`` probe so that the next read
     with ``discover_models: false`` uses the cached list instead of a stale
@@ -186,12 +188,27 @@ def _save_discovered_models_to_config(
         from hermes_cli.config import load_config, save_config
 
         cfg = load_config()
-        providers = cfg.get("custom_providers") or []
-        if not isinstance(providers, list):
-            return
-
         norm_url = api_url.strip().rstrip("/").lower()
         changed = False
+        discovered_models = {
+            model_id: dict((model_metadata or {}).get(model_id) or {})
+            for model_id in model_ids
+        }
+
+        keyed_providers = cfg.get("providers")
+        if provider_slug and isinstance(keyed_providers, dict):
+            entry = keyed_providers.get(provider_slug)
+            if isinstance(entry, dict) and entry.get("discover_models") is not False:
+                entry_url = str(entry.get("base_url") or entry.get("url") or "").strip()
+                if not entry_url or entry_url.rstrip("/").lower() == norm_url:
+                    if entry.get("models") != discovered_models or entry.get("models_discovered") is not True:
+                        entry["models"] = discovered_models
+                        entry["models_discovered"] = True
+                        changed = True
+
+        providers = cfg.get("custom_providers") or []
+        if not isinstance(providers, list):
+            providers = []
         for entry in providers:
             if not isinstance(entry, dict):
                 continue
@@ -240,12 +257,13 @@ def _save_discovered_models_to_config(
                 and list(existing) == model_ids
             ):
                 continue
-            entry["models"] = {model_id: {} for model_id in model_ids}
+            entry["models"] = discovered_models
             entry["models_discovered"] = True
             changed = True
 
         if changed:
-            cfg["custom_providers"] = providers
+            if providers:
+                cfg["custom_providers"] = providers
             save_config(cfg)
     except Exception:
         pass

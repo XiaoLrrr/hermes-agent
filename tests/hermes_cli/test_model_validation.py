@@ -201,6 +201,36 @@ class TestFetchApiModels:
         assert probe["resolved_base_url"] == "http://localhost:8000/v1"
         assert probe["used_fallback"] is True
 
+    def test_probe_api_models_keeps_reasoning_efforts(self):
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def read(self):
+                return (
+                    b'{"data":[{"id":"gpt-5","context_length":1000000,'
+                    b'"max_output_tokens":64000,"input_modalities":["text","image"],'
+                    b'"capabilities":{"reasoning":true,"vision":true},'
+                    b'"reasoning_efforts":[{"value":"low"},{"value":"high"}],'
+                    b'"reasoning":{"mandatory":false}}]}'
+                )
+
+        with patch("hermes_cli.models._urlopen_model_catalog_request", return_value=_Resp()):
+            probe = probe_api_models("key", "http://localhost:8000/v1")
+
+        assert probe["reasoning_efforts"] == {"gpt-5": ["low", "high"]}
+        assert probe["model_metadata"]["gpt-5"] == {
+            "context_length": 1000000,
+            "max_output_tokens": 64000,
+            "supports_vision": True,
+            "reasoning": True,
+            "reasoning_efforts": ["low", "high"],
+            "can_disable_reasoning": True,
+        }
+
     def test_probe_api_models_uses_copilot_catalog(self):
         class _Resp:
             def __enter__(self):
@@ -592,5 +622,4 @@ class TestProbeApiModelsUserAgent:
         assert ua and ua.startswith("hermes-cli/")
         # No Authorization was set, but UA must still be present.
         assert req.get_header("Authorization") is None
-
 

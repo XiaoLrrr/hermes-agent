@@ -155,3 +155,60 @@ def test_catalog_failure_never_breaks_the_picker(monkeypatch):
     caps = rows[0]["capabilities"]["deepseek/deepseek-v4-pro"]
     assert "supported_efforts" not in caps
     assert caps["reasoning"] is True
+
+
+def test_live_custom_metadata_overwrites_stale_keyed_provider(monkeypatch):
+    cfg = {
+        "providers": {
+            "command": {
+                "base_url": "http://127.0.0.1:20128/v1",
+                "discover_models": True,
+                "models": {
+                    "cmc/deepseek/deepseek-v4-pro": {
+                        "reasoning_efforts": ["high", "max"],
+                    },
+                    "stale-model": {},
+                },
+            },
+        },
+    }
+    live_metadata = {
+        "cmc/deepseek/deepseek-v4-pro": {
+            "reasoning": True,
+            "reasoning_efforts": ["low", "high", "max"],
+            "context_length": 1000000,
+        },
+    }
+    saved = []
+    monkeypatch.setattr(models_mod, "model_supports_fast_mode", lambda model: False)
+    monkeypatch.setattr(
+        models_mod,
+        "probe_api_models",
+        lambda *args, **kwargs: {
+            "models": list(live_metadata),
+            "model_metadata": live_metadata,
+        },
+    )
+    monkeypatch.setattr("hermes_cli.config.load_config", lambda: cfg)
+    monkeypatch.setattr("hermes_cli.config.save_config", lambda value: saved.append(value))
+
+    ctx = inv.ConfigContext(
+        current_provider="command",
+        current_model="cmc/deepseek/deepseek-v4-pro",
+        current_base_url="http://127.0.0.1:20128/v1",
+        user_providers=cfg["providers"],
+        custom_providers=[],
+    )
+    rows = [{
+        "slug": "command",
+        "api_url": "http://127.0.0.1:20128/v1",
+        "is_user_defined": True,
+        "models": ["cmc/deepseek/deepseek-v4-pro"],
+    }]
+    inv._apply_capabilities(rows, ctx)
+
+    caps = rows[0]["capabilities"]["cmc/deepseek/deepseek-v4-pro"]
+    assert caps["reasoning_efforts"] == ["low", "high", "max"]
+    assert caps["context_length"] == 1000000
+    assert saved
+    assert cfg["providers"]["command"]["models"] == live_metadata

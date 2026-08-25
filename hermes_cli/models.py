@@ -5725,8 +5725,65 @@ def probe_api_models(
         try:
             with _urlopen_model_catalog_request(req, **_open_kwargs) as resp:
                 data = json.loads(resp.read().decode())
+                entries = data.get("data", [])
+                model_metadata: dict[str, dict[str, Any]] = {}
+                for item in entries:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        continue
+                    model_id = str(item["id"])
+                    capabilities = item.get("capabilities")
+                    capabilities = capabilities if isinstance(capabilities, dict) else {}
+                    reasoning = item.get("reasoning")
+                    reasoning = reasoning if isinstance(reasoning, dict) else {}
+                    metadata: dict[str, Any] = {}
+
+                    context_length = item.get("context_length", capabilities.get("contextWindow"))
+                    if isinstance(context_length, int) and context_length > 0:
+                        metadata["context_length"] = context_length
+                    max_output = item.get("max_output_tokens", item.get("max_completion_tokens"))
+                    if not isinstance(max_output, int):
+                        max_output = capabilities.get("maxOutput")
+                    if isinstance(max_output, int) and max_output > 0:
+                        metadata["max_output_tokens"] = max_output
+
+                    if isinstance(capabilities.get("vision"), bool):
+                        metadata["supports_vision"] = capabilities["vision"]
+                    elif isinstance(item.get("input_modalities"), list):
+                        metadata["supports_vision"] = "image" in item["input_modalities"]
+                    if isinstance(capabilities.get("reasoning"), bool):
+                        metadata["reasoning"] = capabilities["reasoning"]
+
+                    raw_efforts = item.get("reasoning_efforts")
+                    if not isinstance(raw_efforts, list):
+                        raw_efforts = reasoning.get("supported_efforts")
+                    if not isinstance(raw_efforts, list):
+                        raw_efforts = capabilities.get("thinkingLevels")
+                    raw_efforts = raw_efforts if isinstance(raw_efforts, list) else []
+                    values = [
+                        option.get("value") if isinstance(option, dict) else option
+                        for option in raw_efforts
+                    ]
+                    efforts = [
+                        value.strip().lower()
+                        for value in values
+                        if isinstance(value, str) and value.strip().lower() != "none"
+                    ]
+                    if efforts and metadata.get("reasoning") is not False:
+                        metadata["reasoning_efforts"] = list(dict.fromkeys(efforts))
+                    if metadata.get("reasoning") is not False:
+                        if isinstance(reasoning.get("mandatory"), bool):
+                            metadata["can_disable_reasoning"] = not reasoning["mandatory"]
+                        elif isinstance(capabilities.get("thinkingCanDisable"), bool):
+                            metadata["can_disable_reasoning"] = capabilities["thinkingCanDisable"]
+                    model_metadata[model_id] = metadata
                 return {
-                    "models": [m.get("id", "") for m in data.get("data", [])],
+                    "models": list(model_metadata),
+                    "model_metadata": model_metadata,
+                    "reasoning_efforts": {
+                        model_id: metadata["reasoning_efforts"]
+                        for model_id, metadata in model_metadata.items()
+                        if "reasoning_efforts" in metadata
+                    },
                     "probed_url": url,
                     "resolved_base_url": candidate_base.rstrip("/"),
                     "suggested_base_url": alternate_base if alternate_base != candidate_base else normalized,
