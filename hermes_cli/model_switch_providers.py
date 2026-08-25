@@ -25,7 +25,8 @@ _UNCAPPED_PICKER_PROVIDERS: frozenset[str] = frozenset({"opencode-zen", "opencod
 
 def _save_discovered_models_to_config(
     api_url: str, model_ids: list[str], *, api_mode: Optional[str] = None,
-    headers: Optional[dict[str, str]] = None) -> None:
+    headers: Optional[dict[str, str]] = None, provider_slug: Optional[str] = None,
+    model_metadata: Optional[dict[str, dict[str, Any]]] = None) -> None:
     """Persist a successful ``/v1/models`` probe into the matching ``custom_providers`` entry.
 
     Matches by base_url (slash-normalised), api_mode and headers. A failed config write is
@@ -36,6 +37,25 @@ def _save_discovered_models_to_config(
     try:
         from hermes_cli.config import load_config, save_config
         cfg = load_config()
+        discovered_models = {
+            model_id: dict((model_metadata or {}).get(model_id) or {})
+            for model_id in model_ids
+        }
+
+        if provider_slug:
+            keyed_providers = cfg.get("providers")
+            entry = keyed_providers.get(provider_slug) if isinstance(keyed_providers, dict) else None
+            if not isinstance(entry, dict):
+                return
+            entry_url = (entry.get("base_url", "") or entry.get("url", "")).strip()
+            if entry_url and entry_url.rstrip("/").lower() != api_url.strip().rstrip("/").lower():
+                return
+            if entry.get("models") != discovered_models or entry.get("models_discovered") is not True:
+                entry["models"] = discovered_models
+                entry["models_discovered"] = True
+                save_config(cfg)
+            return
+
         providers = cfg.get("custom_providers") or []
         if not isinstance(providers, list):
             return
@@ -52,7 +72,7 @@ def _save_discovered_models_to_config(
                 continue
             if not _discovered_catalog_stale(entry, model_ids):
                 continue
-            entry["models"] = {model_id: {} for model_id in model_ids}
+            entry["models"] = discovered_models
             entry["models_discovered"] = True
             changed = True
 
