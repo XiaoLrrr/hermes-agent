@@ -155,3 +155,43 @@ def test_catalog_failure_never_breaks_the_picker(monkeypatch):
     caps = rows[0]["capabilities"]["deepseek/deepseek-v4-pro"]
     assert "supported_efforts" not in caps
     assert caps["reasoning"] is True
+
+
+def test_custom_provider_efforts_resolve_key_env(monkeypatch):
+    """Live custom-provider metadata uses the same scoped key as model discovery."""
+    monkeypatch.setenv("COMMAND_API_KEY", "secret")
+    monkeypatch.setattr(models_mod, "model_supports_fast_mode", lambda model: False)
+
+    def _probe(api_key, *_args, **_kwargs):
+        assert api_key == "secret"
+        return {"reasoning_efforts": {"cmc/deepseek": ["low", "high", "max"]}}
+
+    monkeypatch.setattr(models_mod, "probe_api_models", _probe)
+    ctx = inv.ConfigContext(
+        current_provider="command",
+        current_model="cmc/deepseek",
+        current_base_url="",
+        user_providers={
+            "command": {
+                "base_url": "http://router.test/v1",
+                "key_env": "COMMAND_API_KEY",
+            }
+        },
+        custom_providers=[],
+    )
+    rows = [
+        {
+            "slug": "command",
+            "api_url": "http://router.test/v1",
+            "is_user_defined": True,
+            "models": ["cmc/deepseek"],
+        }
+    ]
+
+    inv._apply_capabilities(rows, ctx)
+
+    assert rows[0]["capabilities"]["cmc/deepseek"]["reasoning_efforts"] == [
+        "low",
+        "high",
+        "max",
+    ]
