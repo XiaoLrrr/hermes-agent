@@ -164,11 +164,11 @@ def run_oneshot(
     prompt: str,
     model: Optional[str] = None,
     provider: Optional[str] = None,
+    reasoning: Optional[str] = None,
     toolsets: object = None,
     skills: object = None,
     usage_file: Optional[str] = None,
     resume: Optional[str] = None,
-    reasoning: object = None,
 ) -> int:
     """Execute a single prompt and print only the final content block.
 
@@ -220,11 +220,11 @@ def run_oneshot(
                 prompt,
                 model=model,
                 provider=provider,
+                reasoning=reasoning,
                 toolsets=explicit_toolsets,
                 use_config_toolsets=use_config_toolsets,
                 skills=skills,
                 resume=resume,
-                reasoning=reasoning,
             )
         except BaseException as exc:  # noqa: BLE001
             # Capture anything escaping the agent (OSError from prompt_toolkit on a non-TTY pipe,
@@ -411,11 +411,11 @@ def _run_agent(
     prompt: str,
     model: Optional[str] = None,
     provider: Optional[str] = None,
+    reasoning: Optional[str] = None,
     toolsets: object = None,
     use_config_toolsets: bool = True,
     skills: object = None,
     resume: Optional[str] = None,
-    reasoning: object = None,
 ) -> tuple[str, dict]:
     """Build an AIAgent exactly like a normal CLI chat turn, run one conversation, and return
     ``(final_response, run_result)``. Imports are local to keep CLI startup cheap."""
@@ -479,6 +479,7 @@ def _run_agent(
             requested_provider=runtime.get("requested_provider"),
             api_mode=runtime.get("api_mode"),
             model=choice.model,
+            reasoning_config=reasoning_config,
             enabled_toolsets=toolsets_list,
             quiet_mode=True,
             platform="cli",
@@ -487,7 +488,6 @@ def _run_agent(
             credential_pool=runtime.get("credential_pool"),
             fallback_model=get_fallback_chain(cfg) or None,
             ephemeral_system_prompt=skills_prompt,
-            reasoning_config=reasoning_config,
             # The only interactive callback wired: no user sits at a terminal. Sudo prompts gate on
             # HERMES_INTERACTIVE (never set), hook approval via HERMES_ACCEPT_HOOKS=1, dangerous
             # commands via HERMES_YOLO_MODE=1, skill secret capture degrades gracefully.
