@@ -1,4 +1,4 @@
-import { DEFAULT_REASONING_EFFORT, isReasoningEffort } from '@hermes/shared'
+import { DEFAULT_REASONING_EFFORT, isReasoningEffort, REASONING_EFFORTS, type ReasoningEffort } from '@hermes/shared'
 
 import { normalize } from '@/lib/text'
 
@@ -36,4 +36,15 @@ export function resolveReasoningEffort(effort: string, fallback: string = DEFAUL
   }
 
   return isReasoningEffort(value) ? value : DEFAULT_REASONING_EFFORT
+}
+
+export function supportedReasoningEffort(effort: string, supported?: readonly string[] | null): string {
+  const available = REASONING_EFFORTS.filter(value => !supported || supported.includes(value))
+  const requested = resolveReasoningEffort(effort)
+
+  if (requested && available.includes(requested as ReasoningEffort)) return requested
+  if (available.includes(DEFAULT_REASONING_EFFORT)) return DEFAULT_REASONING_EFFORT
+  if (available.includes('high')) return 'high'
+
+  return available[0] ?? ''
 }
