@@ -6470,8 +6470,24 @@ def probe_api_models(
         try:
             with _urlopen_model_catalog_request(req, **_open_kwargs) as resp:
                 data = json.loads(resp.read().decode())
+                entries = data.get("data", [])
+                reasoning_efforts = {}
+                for item in entries:
+                    if not isinstance(item, dict) or not item.get("id"):
+                        continue
+                    raw_efforts = item.get("reasoning_efforts")
+                    if not isinstance(raw_efforts, list):
+                        continue
+                    values = [
+                        option.get("value") if isinstance(option, dict) else option
+                        for option in raw_efforts
+                    ]
+                    efforts = [value for value in values if isinstance(value, str) and value]
+                    if efforts:
+                        reasoning_efforts[str(item["id"])] = efforts
                 return {
-                    "models": [m.get("id", "") for m in data.get("data", [])],
+                    "models": [m.get("id", "") for m in entries],
+                    "reasoning_efforts": reasoning_efforts,
                     "probed_url": url,
                     "resolved_base_url": candidate_base.rstrip("/"),
                     "suggested_base_url": alternate_base if alternate_base != candidate_base else normalized,

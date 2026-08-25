@@ -6732,6 +6732,14 @@ def _apply_model_switch(
                 f"Model switch to {result.new_model} failed ({exc}); "
                 f"staying on {getattr(agent, 'model', current_model)}."
             ) from exc
+        # A session-scoped reasoning override picked in the model menu must
+        # survive a model switch. agent.switch_model() re-resolves reasoning
+        # from config (per-model override > global agent.reasoning_effort),
+        # which would otherwise clobber the user's explicit choice with the
+        # global default (e.g. every model snapping to `max`).
+        session_reasoning = session.get("create_reasoning_override")
+        if session_reasoning is not None:
+            agent.reasoning_config = dict(session_reasoning)
         _restart_slash_worker(sid, session)
         _persist_live_session_runtime(session)
         _persist_live_session_system_prompt(session)

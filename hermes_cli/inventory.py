@@ -320,7 +320,7 @@ def build_models_payload(
             cached_only=pricing_cache_only,
         )
     if capabilities:
-        _apply_capabilities(rows)
+        _apply_capabilities(rows, ctx)
     if featured:
         _apply_featured(rows)
     _apply_custom_aliases(rows)
@@ -487,8 +487,8 @@ def _reasoning_catalog_reader(slug: str):
     return None
 
 
-def _apply_capabilities(rows: list[dict]) -> None:
-    """Attach a ``{model: {fast, reasoning, ...}}`` map to each provider row.
+def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
+    """Attach per-model option support, including the actual effort ladder.
 
     `fast` mirrors ``model_supports_fast_mode`` (the same gate the runtime
     enforces). `reasoning` comes from the models.dev catalog when known and
@@ -510,7 +510,7 @@ def _apply_capabilities(rows: list[dict]) -> None:
     ``minimal`` at its lowest thinking), so filtering the picker by that list
     would hide levels that demonstrably work.
     """
-    from hermes_cli.models import model_supports_fast_mode
+    from hermes_cli.models import model_supports_fast_mode, probe_api_models
 
     try:
         from agent.models_dev import get_model_capabilities
@@ -521,6 +521,27 @@ def _apply_capabilities(rows: list[dict]) -> None:
         slug = row.get("slug") or ""
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
+        live_efforts: dict[str, list[str]] = {}
+        provider_cfg = ctx.user_providers.get(slug, {}) if isinstance(ctx.user_providers, dict) else {}
+        configured_efforts: dict[str, list[str]] = {}
+        configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
+        if isinstance(configured_models, dict):
+            configured_efforts = {
+                model: metadata["reasoning_efforts"]
+                for model, metadata in configured_models.items()
+                if isinstance(metadata, dict) and isinstance(metadata.get("reasoning_efforts"), list)
+            }
+        if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
+            try:
+                probe = probe_api_models(
+                    provider_cfg.get("api_key"),
+                    row["api_url"],
+                    api_mode=provider_cfg.get("api_mode"),
+                    request_headers=provider_cfg.get("extra_headers"),
+                )
+                live_efforts = probe.get("reasoning_efforts") or {}
+            except Exception:
+                pass
 
         for model in row.get("models") or []:
             reasoning = True
@@ -535,6 +556,8 @@ def _apply_capabilities(rows: list[dict]) -> None:
             entry: dict[str, Any] = {
                 "fast": bool(model_supports_fast_mode(model)),
                 "reasoning": reasoning,
+                **({"reasoning_efforts": live_efforts[model]} if model in live_efforts else {}),
+                **({"reasoning_efforts": configured_efforts[model]} if model in configured_efforts else {}),
             }
 
             if reasoning and read_reasoning_catalog is not None:
