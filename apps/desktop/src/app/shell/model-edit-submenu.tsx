@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Switch } from '@/components/ui/switch'
 import { useI18n } from '@/i18n'
-import { isThinkingEnabled, REASONING_EFFORTS, resolveReasoningEffort } from '@/lib/reasoning-effort'
+import { isThinkingEnabled, REASONING_EFFORTS, supportedReasoningEffort } from '@/lib/reasoning-effort'
 
 // Hermes' real reasoning levels live in lib/reasoning-effort; `none` is owned
 // by the Thinking toggle, not the radio.
@@ -86,6 +86,8 @@ interface ModelEditSubmenuProps {
   provider: string
   /** Whether this model supports reasoning effort. */
   reasoning: boolean
+  /** Actual selectable effort ladder reported by the provider. */
+  reasoningEfforts?: string[]
 }
 
 export function ModelEditSubmenu(props: ModelEditSubmenuProps) {
@@ -109,12 +111,14 @@ function ModelEditSubmenuBody({
   isActive,
   onSelectModel,
   onSetOptions,
-  reasoning
+  reasoning,
+  reasoningEfforts
 }: ModelEditSubmenuProps) {
   const { t } = useI18n()
   const copy = t.shell.modelOptions
 
-  const effortValue = resolveReasoningEffort(effort, defaultEffort)
+  const efforts = REASONING_EFFORTS.filter(value => !reasoningEfforts || reasoningEfforts.includes(value))
+  const effortValue = supportedReasoningEffort(effort === 'none' ? defaultEffort : effort || defaultEffort, efforts)
   const thinkingOn = isThinkingEnabled(effort, defaultEffort)
   const showThinkingToggle = reasoning && canDisableReasoning !== false
 
@@ -167,7 +171,7 @@ function ModelEditSubmenuBody({
           <DropdownMenuSeparator className="mx-0" />
           <DropdownMenuLabel className={dropdownMenuSectionLabel}>{copy.effort}</DropdownMenuLabel>
           <DropdownMenuRadioGroup onValueChange={value => onSetOptions({ effort: value })} value={effortValue}>
-            {REASONING_EFFORTS.map(value => (
+            {efforts.map(value => (
               <DropdownMenuRadioItem
                 className={dropdownMenuRow}
                 key={value}

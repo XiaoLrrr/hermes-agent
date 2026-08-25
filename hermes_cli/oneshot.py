@@ -203,6 +203,7 @@ def run_oneshot(
     prompt: str,
     model: Optional[str] = None,
     provider: Optional[str] = None,
+    reasoning: Optional[str] = None,
     toolsets: object = None,
     skills: object = None,
     usage_file: Optional[str] = None,
@@ -280,6 +281,7 @@ def run_oneshot(
                     prompt,
                     model=model,
                     provider=provider,
+                    reasoning=reasoning,
                     toolsets=explicit_toolsets,
                     use_config_toolsets=use_config_toolsets,
                     skills=skills,
@@ -358,6 +360,7 @@ def _run_agent(
     prompt: str,
     model: Optional[str] = None,
     provider: Optional[str] = None,
+    reasoning: Optional[str] = None,
     toolsets: object = None,
     use_config_toolsets: bool = True,
     skills: object = None,
@@ -388,6 +391,12 @@ def _run_agent(
 
     env_model = os.getenv("HERMES_INFERENCE_MODEL", "").strip()
     effective_model = (model or "").strip() or env_model or cfg_model
+
+    from hermes_constants import parse_reasoning_effort, resolve_reasoning_config
+
+    reasoning_config = resolve_reasoning_config(cfg, effective_model)
+    if reasoning is not None and reasoning.strip():
+        reasoning_config = parse_reasoning_effort(reasoning) or reasoning_config
 
     # Resolve effective provider: explicit arg → (auto-detect from model if
     # model was explicit) → env / config (handled inside resolve_runtime_provider).
@@ -496,6 +505,7 @@ def _run_agent(
             requested_provider=runtime.get("requested_provider"),
             api_mode=runtime.get("api_mode"),
             model=effective_model,
+            reasoning_config=reasoning_config,
             enabled_toolsets=toolsets_list,
             quiet_mode=True,
             platform="cli",
