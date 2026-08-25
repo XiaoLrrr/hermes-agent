@@ -2155,9 +2155,23 @@ def probe_api_models(
             data = _get_json(url, timeout=timeout, headers=headers, **_open_kwargs)
         except Exception:
             continue
-        return _probe_result(
-            [m.get("id", "") for m in data.get("data", [])], url, candidate_base.rstrip("/"),
+        entries = data.get("data", [])
+        result = _probe_result(
+            [m.get("id", "") for m in entries], url, candidate_base.rstrip("/"),
             alternate_base if alternate_base != candidate_base else normalized, is_fallback)
+        reasoning_efforts = {}
+        for item in entries:
+            if not isinstance(item, dict) or not item.get("id"):
+                continue
+            raw_efforts = item.get("reasoning_efforts")
+            if not isinstance(raw_efforts, list):
+                continue
+            values = [option.get("value") if isinstance(option, dict) else option for option in raw_efforts]
+            efforts = [value for value in values if isinstance(value, str) and value]
+            if efforts:
+                reasoning_efforts[str(item["id"])] = efforts
+        result["reasoning_efforts"] = reasoning_efforts
+        return result
     return _probe_result(
         None, tried[0] if tried else normalized.rstrip("/") + "/models", normalized,
         alternate_base if alternate_base != normalized else None)
