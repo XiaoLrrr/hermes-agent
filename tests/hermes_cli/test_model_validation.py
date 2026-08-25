@@ -194,19 +194,47 @@ class TestFetchApiModels:
         assert probe["resolved_base_url"] == "http://localhost:8000/v1"
         assert probe["used_fallback"] is True
 
-    def test_probe_api_models_keeps_reasoning_efforts(self):
+    def test_probe_api_models_keeps_full_model_metadata(self):
         with patch(
             "hermes_cli.models._get_json",
             return_value={
-                "data": [{
-                    "id": "gpt-5",
-                    "reasoning_efforts": [{"value": "low"}, {"value": "high"}],
-                }]
+                "data": [
+                    {
+                        "id": "deepseek",
+                        "context_length": 1000000,
+                        "max_output_tokens": 384000,
+                        "input_modalities": ["text"],
+                        "reasoning_efforts": [{"value": "low"}, {"value": "high"}, {"value": "max"}],
+                        "reasoning": {"mandatory": False},
+                        "capabilities": {"vision": False, "tools": True, "reasoning": True},
+                    },
+                    {
+                        "id": "plain",
+                        "input_modalities": ["text", "image"],
+                        "capabilities": {"vision": True, "tools": True, "reasoning": False},
+                    },
+                ]
             },
         ):
             probe = probe_api_models("key", "http://localhost:8000/v1")
 
-        assert probe["reasoning_efforts"] == {"gpt-5": ["low", "high"]}
+        assert probe["models"] == ["deepseek", "plain"]
+        assert probe["model_metadata"]["deepseek"] == {
+            "context_length": 1000000,
+            "max_output_tokens": 384000,
+            "input_modalities": ["text"],
+            "supports_vision": False,
+            "supports_tools": True,
+            "supports_reasoning": True,
+            "reasoning_efforts": ["low", "high", "max"],
+            "can_disable_reasoning": True,
+        }
+        assert probe["model_metadata"]["plain"] == {
+            "input_modalities": ["text", "image"],
+            "supports_vision": True,
+            "supports_tools": True,
+            "supports_reasoning": False,
+        }
 
     def test_probe_api_models_uses_copilot_catalog(self):
         class _Resp:
