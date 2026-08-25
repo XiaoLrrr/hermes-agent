@@ -269,7 +269,7 @@ def _reasoning_catalog_reader(slug: str):
     return read
 
 
-def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
+def _apply_capabilities(rows: list[dict], ctx: ConfigContext | None = None) -> None:
     """Attach ``{model: {fast, reasoning, ...}}`` per row. ``reasoning`` defaults True when the catalog is
     silent (the dial is a no-op on models that ignore it; hiding it from a capable model is worse). A
     serving aggregator's detail overrides models.dev (adds ``can_disable_reasoning``). ``supported_efforts``
@@ -285,7 +285,8 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
         slug = row.get("slug") or ""
         caps: dict[str, dict[str, Any]] = {}
         read_reasoning_catalog = _reasoning_catalog_reader(slug.lower())
-        provider_cfg = ctx.user_providers.get(slug, {}) if isinstance(ctx.user_providers, dict) else {}
+        user_providers = ctx.user_providers if ctx and isinstance(ctx.user_providers, dict) else {}
+        provider_cfg = user_providers.get(slug, {})
         configured_models = provider_cfg.get("models", {}) if isinstance(provider_cfg, dict) else {}
         configured_efforts = {
             model: metadata["reasoning_efforts"]
@@ -295,8 +296,10 @@ def _apply_capabilities(rows: list[dict], ctx: ConfigContext) -> None:
         live_efforts: dict[str, list[str]] = {}
         if row.get("is_user_defined") and row.get("api_url") and isinstance(provider_cfg, dict):
             try:
+                from hermes_cli.fallback_config import resolve_entry_api_key
+
                 probe = probe_api_models(
-                    provider_cfg.get("api_key"), row["api_url"],
+                    resolve_entry_api_key(provider_cfg), row["api_url"],
                     api_mode=provider_cfg.get("api_mode"),
                     request_headers=provider_cfg.get("extra_headers"))
                 live_efforts = probe.get("reasoning_efforts") or {}
