@@ -194,6 +194,20 @@ class TestFetchApiModels:
         assert probe["resolved_base_url"] == "http://localhost:8000/v1"
         assert probe["used_fallback"] is True
 
+    def test_probe_api_models_keeps_reasoning_efforts(self):
+        with patch(
+            "hermes_cli.models._get_json",
+            return_value={
+                "data": [{
+                    "id": "gpt-5",
+                    "reasoning_efforts": [{"value": "low"}, {"value": "high"}],
+                }]
+            },
+        ):
+            probe = probe_api_models("key", "http://localhost:8000/v1")
+
+        assert probe["reasoning_efforts"] == {"gpt-5": ["low", "high"]}
+
     def test_probe_api_models_uses_copilot_catalog(self):
         class _Resp:
             def __enter__(self):
@@ -586,9 +600,6 @@ class TestProbeApiModelsUserAgent:
         assert ua and ua.startswith("hermes-cli/")
         # No Authorization was set, but UA must still be present.
         assert req.get_header("Authorization") is None
-
-
-
 
 # -- validate — OpenRouter routing-variant suffixes (:nitro / :floor / ...) ----
 
