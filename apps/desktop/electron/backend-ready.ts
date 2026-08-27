@@ -35,7 +35,7 @@ function resolvePortAnnounceTimeoutMs(env = process.env) {
 }
 
 /**
- * Watch a child process's stdout for the `HERMES_(BACKEND|DASHBOARD)_READY
+ * Watch a child process's stdout and stderr for the `HERMES_(BACKEND|DASHBOARD)_READY
  * port=<N>` line that web_server.py prints after uvicorn binds its socket.
  *
  * Returns the parsed port. Rejects if:
@@ -64,6 +64,7 @@ function waitForDashboardPort(child, timeoutMs = resolvePortAnnounceTimeoutMs())
       done = true
       clearTimeout(timer)
       child.stdout.off('data', onData)
+      child.stderr.off('data', onData)
       child.off('exit', onExit)
       child.off('error', onError)
     }
@@ -102,6 +103,7 @@ function waitForDashboardPort(child, timeoutMs = resolvePortAnnounceTimeoutMs())
     }, timeoutMs)
 
     child.stdout.on('data', onData)
+    child.stderr.on('data', onData)
     child.on('exit', onExit)
     child.on('error', onError)
   })
