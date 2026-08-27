@@ -2,7 +2,7 @@
 
 本文记录 `fix/custom-provider-reasoning` 分支相对
 `NousResearch/hermes-agent@057dcdf236` 的本地功能提交。变更集中在命名自定义
-Provider 的推理参数格式、请求配置应用和 Desktop 会话身份恢复。
+Provider 的推理参数格式、请求配置应用、Desktop 会话身份恢复和本机/远程连接启动兼容。
 
 ## 提交概览
 
@@ -12,6 +12,7 @@ Provider 的推理参数格式、请求配置应用和 Desktop 会话身份恢�
 | `56f5ecdaa2` | 诊断与文档 | 明确提示 `reasoning_format: none` 会抑制显式关闭推理 |
 | `d957c176d4` | 功能修复 | 让命名自定义 Provider 实际使用 custom 请求配置 |
 | `5faa5b7952` | Desktop 修复 | 保留命名 Provider 身份，使旧会话档位修改命中实时会话 |
+| `679a5a228` | Desktop 修复 | 兼容后端将 READY 信号写入 stderr，避免远程模式下误报本机连接失败 |
 | 本文档提交 | 文档 | 汇总上述提交的原因、行为、兼容性和验证结果，不修改运行时代码 |
 
 ## `d505305e88`：自定义 Provider 推理参数格式
@@ -124,6 +125,33 @@ custom profile，导致上一提交配置的 `reasoning_format` 没有进入实�
 
 - `tui_gateway/server.py`
 - `tests/tui_gateway/test_custom_provider_session_persistence.py`
+
+## `679a5a228`：兼容 stderr 中的后端就绪信号
+
+提交标题：`fix(desktop): accept backend readiness on stderr`
+
+### 问题
+
+远程 Hermes 已成功连接时，Desktop 仍会为本机 `default` profile 启动一个后台
+`forced-local` 后端。在 Windows 上，后端通过 `hermes.exe` 启动时可能把
+`HERMES_BACKEND_READY port=<N>` 写入 stderr；原来的端口探测器只监听 stdout，
+因此等待 90 秒后误判本机后端启动失败，并显示“无法连接到 This device”。这不会
+影响已经建立的远程连接，但会污染连接切换提示。
+
+### 变更
+
+- `waitForDashboardPort` 同时监听 stdout 和 stderr，并在清理时移除两侧监听器。
+- 增加 stderr 就绪信号的回归测试。
+- 不改变远程 SSH、认证或后端 API 协议。
+
+### 主要文件
+
+- `apps/desktop/electron/backend-ready.ts`
+- `apps/desktop/electron/backend-ready.test.ts`
+
+### 验证
+
+桌面项目定向测试：`18 tests passed, 0 failed`。
 
 ## 验证
 
