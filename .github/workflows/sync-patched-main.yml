@@ -34,7 +34,7 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git remote add upstream https://github.com/NousResearch/hermes-agent.git
           git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main
-          git fetch --no-tags --depth=20 origin +refs/heads/patch-source:refs/remotes/origin/patch-source
+          git fetch --no-tags origin +refs/heads/patch-source:refs/remotes/origin/patch-source
           git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
           git switch --force-create main upstream/main
           git cherry-pick \
