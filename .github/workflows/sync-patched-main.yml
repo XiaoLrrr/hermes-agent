@@ -123,8 +123,8 @@ jobs:
           $version = $match.Matches[0].Groups[1].Value
           $short = $env:UPSTREAM_SHA.Substring(0, 12)
           $tag = "v$version-patched.$short"
-          gh release view $tag --repo XiaoLrrr/hermes-agent *> $null
-          $exists = $LASTEXITCODE -eq 0
+          $existingTags = @(gh release list --repo XiaoLrrr/hermes-agent --limit 100 --json tagName --jq '.[].tagName')
+          $exists = $existingTags -contains $tag
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
           "exists=$($exists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
