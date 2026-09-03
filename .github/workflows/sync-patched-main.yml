@@ -121,12 +121,14 @@ jobs:
           $match = Select-String -LiteralPath pyproject.toml -Pattern '^version = "([^"]+)"$' | Select-Object -First 1
           if (-not $match) { throw "Cannot read Hermes version from pyproject.toml" }
           $version = $match.Matches[0].Groups[1].Value
+          $desktopVersion = (Get-Content -Raw apps/desktop/package.json | ConvertFrom-Json).version
           $short = $env:UPSTREAM_SHA.Substring(0, 12)
           $tag = "v$version-patched.$short"
           $existingTags = @(gh release list --repo XiaoLrrr/hermes-agent --limit 100 --json tagName --jq '.[].tagName')
           $exists = $existingTags -contains $tag
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
+          "desktop_version=$desktopVersion" >> $env:GITHUB_OUTPUT
           "exists=$($exists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -155,21 +157,58 @@ jobs:
           PATCHED_SHA: ${{ needs.sync.outputs.patched_sha }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           HERMES_VERSION: ${{ steps.release.outputs.version }}
+          DESKTOP_VERSION: ${{ steps.release.outputs.desktop_version }}
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
         run: |
           $assets = Get-ChildItem apps/desktop/release -File | Where-Object {
             $_.Extension -in '.exe', '.blockmap' -or $_.Name -eq 'latest.yml'
           }
           if (-not $assets) { throw "Windows installer artifacts were not produced" }
+          $installer = $assets | Where-Object Extension -eq '.exe' | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $installerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
           $short = $env:UPSTREAM_SHA.Substring(0, 12)
           $notes = Join-Path $env:RUNNER_TEMP release-notes.md
           @"
-          Patched build of NousResearch/hermes-agent at upstream commit $env:UPSTREAM_SHA.
+          Patched distribution based on NousResearch/hermes-agent at upstream commit [$short](https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA).
+
+          ## Versions
 
           - Hermes Agent: v$env:HERMES_VERSION
-          - Patched commit: $env:PATCHED_SHA
-          - Includes the fork's fixed 8-patch stack
-          - Windows x64 NSIS installer
+          - Hermes Desktop: v$env:DESKTOP_VERSION
+          - Patched commit: [$env:PATCHED_SHA](https://github.com/XiaoLrrr/hermes-agent/commit/$env:PATCHED_SHA)
+
+          The Agent and Desktop keep independent upstream version numbers; the Windows installer name therefore uses Desktop v$env:DESKTOP_VERSION.
+
+          ## Fork additions
+
+          - Add configurable reasoning wire formats for named custom providers, including strict endpoints that require nested reasoning objects or no reasoning fields.
+          - Surface suppressed reasoning-disable intent in the provider configuration.
+          - Apply request profiles to named providers.
+          - Preserve named provider identity when reopening Desktop sessions.
+          - Restore reasoning-effort support for local providers.
+          - Authenticate custom-model metadata probes so live reasoning capabilities reach the Desktop model menu.
+          - Synchronize stable model metadata exposed by 9Router into the gateway and Desktop configuration.
+          - Accept backend readiness announcements on stderr, preventing false local connection timeouts while remote profiles are active.
+
+          ## Verification
+
+          - All 10 targeted Python provider, reasoning, inventory, and session test files passed.
+          - The targeted Desktop model-menu test passed.
+          - The Windows x64 NSIS build completed successfully.
+
+          Workflow run: https://github.com/XiaoLrrr/hermes-agent/actions/runs/$env:GITHUB_RUN_ID
+
+          ## Windows artifacts
+
+          - ``$($installer.Name)`` — Windows x64 NSIS installer.
+          - ``$($installer.Name).blockmap`` and ``latest.yml`` — update metadata.
+          - Installer SHA-256: ``$installerSha256``
+
+          ## Source
+
+          - Upstream commit: https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA
+          - Patched commit: https://github.com/XiaoLrrr/hermes-agent/commit/$env:PATCHED_SHA
           "@ | Set-Content -LiteralPath $notes -Encoding utf8
           $arguments = @(
             'release', 'create', $env:RELEASE_TAG,
