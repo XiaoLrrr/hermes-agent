@@ -1,0 +1,224 @@
+name: Sync fork main
+
+on:
+  schedule:
+    - cron: "23 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-fork-main
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+      patched_sha: ${{ steps.patch.outputs.patched_sha }}
+      upstream_sha: ${{ steps.patch.outputs.upstream_sha }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Rebuild patched branch
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git remote add upstream https://github.com/NousResearch/hermes-agent.git
+          git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main
+          git fetch --no-tags --depth=20 origin +refs/heads/patch-source:refs/remotes/origin/patch-source
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          git switch --force-create main upstream/main
+          git cherry-pick \
+            6ffbd3552 \
+            ce05ada74 \
+            a66dcc209 \
+            eb514619e \
+            d6a496d3a \
+            4f28335e0 \
+            c916933b5 \
+            cdce14784
+          git rm -r --quiet .github/workflows
+          git checkout origin/main -- .github/workflows
+          git show origin/patch-source:.github/workflows/sync-patched-main.yml \
+            > .github/workflows/sync-patched-main.yml
+          git add .github/workflows/sync-patched-main.yml
+          git commit -m "ci: sync patched main from upstream"
+          echo "patched_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif [ "$(git rev-parse HEAD^{tree})" = "$(git rev-parse origin/main^{tree})" ]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # 8.2.0
+        if: steps.patch.outputs.changed == 'true'
+        with:
+          version: "0.9.28"
+          enable-cache: true
+
+      - name: Test Python patches
+        if: steps.patch.outputs.changed == 'true'
+        run: |
+          uv python install 3.11
+          uv sync --locked --python 3.11 --extra all --extra dev
+          scripts/run_tests.sh -q \
+            tests/hermes_cli/test_custom_provider_reasoning_format.py \
+            tests/plugins/model_providers/test_custom_profile.py \
+            tests/agent/test_named_custom_provider_profile.py \
+            tests/tui_gateway/test_custom_provider_session_persistence.py \
+            tests/tui_gateway/test_reasoning_session_scope.py \
+            tests/hermes_cli/test_oneshot_reasoning.py \
+            tests/hermes_cli/test_model_validation.py \
+            tests/hermes_cli/test_inventory_reasoning_caps.py \
+            tests/hermes_cli/test_model_switch_custom_providers.py \
+            tests/hermes_cli/test_inventory.py
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.patch.outputs.changed == 'true'
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Test desktop patch
+        if: steps.patch.outputs.changed == 'true'
+        run: |
+          npm --version | grep -q '^12\.' || npm install --global npm@12
+          npm ci
+          npm --workspace apps/desktop test -- src/app/shell/model-edit-submenu.test.tsx
+
+      - name: Publish fork main
+        if: steps.patch.outputs.changed == 'true'
+        run: git push --force origin HEAD:main
+
+  release-windows:
+    name: Release Windows Desktop
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.sync.outputs.patched_sha }}
+
+      - name: Determine release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCHED_SHA: ${{ needs.sync.outputs.patched_sha }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+        run: |
+          $match = Select-String -LiteralPath pyproject.toml -Pattern '^version = "([^"]+)"$' | Select-Object -First 1
+          if (-not $match) { throw "Cannot read Hermes version from pyproject.toml" }
+          $version = $match.Matches[0].Groups[1].Value
+          $desktopVersion = (Get-Content -Raw apps/desktop/package.json | ConvertFrom-Json).version
+          $short = $env:PATCHED_SHA.Substring(0, 8)
+          $tag = "v$version-patched.$short"
+          $existingTags = @(gh release list --repo XiaoLrrr/hermes-agent --limit 100 --json tagName --jq '.[].tagName')
+          $exists = $existingTags -contains $tag
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "desktop_version=$desktopVersion" >> $env:GITHUB_OUTPUT
+          "exists=$($exists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.release.outputs.exists == 'false'
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Build Windows installer
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GITHUB_SHA: ${{ needs.sync.outputs.patched_sha }}
+          GITHUB_REF_NAME: main
+        run: |
+          npm install --global npm@12
+          npm ci
+          npm --workspace apps/desktop run dist:win:nsis
+
+      - name: Create patched release
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCHED_SHA: ${{ needs.sync.outputs.patched_sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          HERMES_VERSION: ${{ steps.release.outputs.version }}
+          DESKTOP_VERSION: ${{ steps.release.outputs.desktop_version }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+        run: |
+          $assets = Get-ChildItem apps/desktop/release -File | Where-Object {
+            $_.Extension -in '.exe', '.blockmap' -or $_.Name -eq 'latest.yml'
+          }
+          if (-not $assets) { throw "Windows installer artifacts were not produced" }
+          $installer = $assets | Where-Object Extension -eq '.exe' | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $installerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          $upstreamShort = $env:UPSTREAM_SHA.Substring(0, 12)
+          $patchedShort = $env:PATCHED_SHA.Substring(0, 8)
+          $notes = Join-Path $env:RUNNER_TEMP release-notes.md
+          @"
+          Patched distribution based on NousResearch/hermes-agent at upstream commit [$upstreamShort](https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA).
+
+          ## Versions
+
+          - Hermes Agent: v$env:HERMES_VERSION
+          - Hermes Desktop: v$env:DESKTOP_VERSION
+          - Patched commit: [$env:PATCHED_SHA](https://github.com/XiaoLrrr/hermes-agent/commit/$env:PATCHED_SHA)
+
+          The Agent and Desktop keep independent upstream version numbers; the Windows installer name therefore uses Desktop v$env:DESKTOP_VERSION.
+
+          ## Fork additions
+
+          - Add configurable reasoning wire formats for named custom providers, including strict endpoints that require nested reasoning objects or no reasoning fields.
+          - Surface suppressed reasoning-disable intent in the provider configuration.
+          - Apply request profiles to named providers.
+          - Preserve named provider identity when reopening Desktop sessions.
+          - Restore reasoning-effort support for local providers.
+          - Authenticate custom-model metadata probes so live reasoning capabilities reach the Desktop model menu.
+          - Synchronize stable model metadata exposed by 9Router into the gateway and Desktop configuration.
+          - Accept backend readiness announcements on stderr, preventing false local connection timeouts while remote profiles are active.
+
+          ## Verification
+
+          - All 10 targeted Python provider, reasoning, inventory, and session test files passed.
+          - The targeted Desktop model-menu test passed.
+          - The Windows x64 NSIS build completed successfully.
+
+          Workflow run: https://github.com/XiaoLrrr/hermes-agent/actions/runs/$env:GITHUB_RUN_ID
+
+          ## Windows artifacts
+
+          - ``$($installer.Name)`` — Windows x64 NSIS installer.
+          - ``$($installer.Name).blockmap`` and ``latest.yml`` — update metadata.
+          - Installer SHA-256: ``$installerSha256``
+
+          ## Source
+
+          - Upstream commit: https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA
+          - Patched commit: https://github.com/XiaoLrrr/hermes-agent/commit/$env:PATCHED_SHA
+          "@ | Set-Content -LiteralPath $notes -Encoding utf8
+          $arguments = @(
+            'release', 'create', $env:RELEASE_TAG,
+            '--repo', 'XiaoLrrr/hermes-agent',
+            '--target', $env:PATCHED_SHA,
+            '--title', "Hermes Agent v$env:HERMES_VERSION patched ($patchedShort)",
+            '--notes-file', $notes,
+            '--prerelease'
+          ) + @($assets.FullName)
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release creation failed" }
