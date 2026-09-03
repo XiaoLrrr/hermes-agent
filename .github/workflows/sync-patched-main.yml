@@ -116,13 +116,14 @@ jobs:
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          PATCHED_SHA: ${{ needs.sync.outputs.patched_sha }}
           UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
         run: |
           $match = Select-String -LiteralPath pyproject.toml -Pattern '^version = "([^"]+)"$' | Select-Object -First 1
           if (-not $match) { throw "Cannot read Hermes version from pyproject.toml" }
           $version = $match.Matches[0].Groups[1].Value
           $desktopVersion = (Get-Content -Raw apps/desktop/package.json | ConvertFrom-Json).version
-          $short = $env:UPSTREAM_SHA.Substring(0, 12)
+          $short = $env:PATCHED_SHA.Substring(0, 8)
           $tag = "v$version-patched.$short"
           $existingTags = @(gh release list --repo XiaoLrrr/hermes-agent --limit 100 --json tagName --jq '.[].tagName')
           $exists = $existingTags -contains $tag
@@ -167,10 +168,11 @@ jobs:
           $installer = $assets | Where-Object Extension -eq '.exe' | Select-Object -First 1
           if (-not $installer) { throw "Windows installer was not produced" }
           $installerSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
-          $short = $env:UPSTREAM_SHA.Substring(0, 12)
+          $upstreamShort = $env:UPSTREAM_SHA.Substring(0, 12)
+          $patchedShort = $env:PATCHED_SHA.Substring(0, 8)
           $notes = Join-Path $env:RUNNER_TEMP release-notes.md
           @"
-          Patched distribution based on NousResearch/hermes-agent at upstream commit [$short](https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA).
+          Patched distribution based on NousResearch/hermes-agent at upstream commit [$upstreamShort](https://github.com/NousResearch/hermes-agent/commit/$env:UPSTREAM_SHA).
 
           ## Versions
 
@@ -214,7 +216,7 @@ jobs:
             'release', 'create', $env:RELEASE_TAG,
             '--repo', 'XiaoLrrr/hermes-agent',
             '--target', $env:PATCHED_SHA,
-            '--title', "Hermes Agent v$env:HERMES_VERSION patched ($short)",
+            '--title', "Hermes Agent v$env:HERMES_VERSION patched ($patchedShort)",
             '--notes-file', $notes,
             '--prerelease'
           ) + @($assets.FullName)
