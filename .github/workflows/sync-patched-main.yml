@@ -16,6 +16,10 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+      patched_sha: ${{ steps.patch.outputs.patched_sha }}
+      upstream_sha: ${{ steps.patch.outputs.upstream_sha }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -46,6 +50,8 @@ jobs:
             > .github/workflows/sync-patched-main.yml
           git add .github/workflows/sync-patched-main.yml
           git commit -m "ci: sync patched main from upstream"
+          echo "patched_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           elif [ "$(git rev-parse HEAD^{tree})" = "$(git rev-parse origin/main^{tree})" ]; then
@@ -93,3 +99,85 @@ jobs:
       - name: Publish fork main
         if: steps.patch.outputs.changed == 'true'
         run: git push --force origin HEAD:main
+
+  release-windows:
+    name: Release Windows Desktop
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.sync.outputs.patched_sha }}
+
+      - name: Determine release
+        id: release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+        run: |
+          $match = Select-String -LiteralPath pyproject.toml -Pattern '^version = "([^"]+)"$' | Select-Object -First 1
+          if (-not $match) { throw "Cannot read Hermes version from pyproject.toml" }
+          $version = $match.Matches[0].Groups[1].Value
+          $short = $env:UPSTREAM_SHA.Substring(0, 12)
+          $tag = "v$version-patched.$short"
+          gh release view $tag --repo XiaoLrrr/hermes-agent *> $null
+          $exists = $LASTEXITCODE -eq 0
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "exists=$($exists.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.release.outputs.exists == 'false'
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Build Windows installer
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          GITHUB_SHA: ${{ needs.sync.outputs.patched_sha }}
+          GITHUB_REF_NAME: main
+        run: |
+          npm install --global npm@12
+          npm ci
+          npm --workspace apps/desktop run dist:win:nsis
+
+      - name: Create patched release
+        if: steps.release.outputs.exists == 'false'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PATCHED_SHA: ${{ needs.sync.outputs.patched_sha }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          HERMES_VERSION: ${{ steps.release.outputs.version }}
+          UPSTREAM_SHA: ${{ needs.sync.outputs.upstream_sha }}
+        run: |
+          $assets = Get-ChildItem apps/desktop/release -File | Where-Object {
+            $_.Extension -in '.exe', '.blockmap' -or $_.Name -eq 'latest.yml'
+          }
+          if (-not $assets) { throw "Windows installer artifacts were not produced" }
+          $short = $env:UPSTREAM_SHA.Substring(0, 12)
+          $notes = Join-Path $env:RUNNER_TEMP release-notes.md
+          @"
+          Patched build of NousResearch/hermes-agent at upstream commit $env:UPSTREAM_SHA.
+
+          - Hermes Agent: v$env:HERMES_VERSION
+          - Patched commit: $env:PATCHED_SHA
+          - Includes the fork's fixed 8-patch stack
+          - Windows x64 NSIS installer
+          "@ | Set-Content -LiteralPath $notes -Encoding utf8
+          $arguments = @(
+            'release', 'create', $env:RELEASE_TAG,
+            '--repo', 'XiaoLrrr/hermes-agent',
+            '--target', $env:PATCHED_SHA,
+            '--title', "Hermes Agent v$env:HERMES_VERSION patched ($short)",
+            '--notes-file', $notes,
+            '--prerelease'
+          ) + @($assets.FullName)
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) { throw "GitHub Release creation failed" }
