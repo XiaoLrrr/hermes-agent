@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          fetch-depth: 0
+          fetch-depth: 16
 
       - name: Rebuild patched branch
         id: patch
@@ -35,6 +35,11 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/NousResearch/hermes-agent.git"
+          for attempt in 1 2 3; do
+            git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main && break
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 15))
+          done
           for attempt in 1 2 3; do
             git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main && break
             [ "$attempt" -eq 3 ] && exit 1
