@@ -38,14 +38,14 @@ jobs:
           git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main
           git switch --force-create main upstream/main
           git cherry-pick \
-            6ffbd3552 \
-            ce05ada74 \
-            a66dcc209 \
-            eb514619e \
-            d6a496d3a \
-            4f28335e0 \
-            c916933b5 \
-            cdce14784
+            edde429c8e \
+            bb54232be3 \
+            8a96055140 \
+            c0c1a7007d \
+            f19a9493ec \
+            542ae49e86 \
+            db55cd95fe \
+            3d5304a303
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
