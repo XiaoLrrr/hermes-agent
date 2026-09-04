@@ -34,17 +34,20 @@ jobs:
           set -euo pipefail
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/NousResearch/hermes-agent.git"
           for attempt in 1 2 3; do
             git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main && break
             [ "$attempt" -eq 3 ] && exit 1
             sleep $((attempt * 15))
           done
-          for attempt in 1 2 3; do
-            git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main && break
-            [ "$attempt" -eq 3 ] && exit 1
-            sleep $((attempt * 15))
-          done
+          upstream_sha="$(gh api repos/NousResearch/hermes-agent/commits/main --jq .sha)"
+          if ! git cat-file -e "${upstream_sha}^{commit}"; then
+            for attempt in 1 2 3; do
+              git fetch --no-tags --depth=1 origin "$upstream_sha" && break
+              [ "$attempt" -eq 3 ] && exit 1
+              sleep $((attempt * 15))
+            done
+          fi
+          git update-ref refs/remotes/upstream/main "$upstream_sha"
           git switch --force-create main upstream/main
           git cherry-pick \
             edde429c8e \
