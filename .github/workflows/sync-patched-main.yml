@@ -57,7 +57,8 @@ jobs:
             f19a9493ec \
             542ae49e86 \
             db55cd95fe \
-            3d5304a303
+            3d5304a303 \
+            ed3b9aa621
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
@@ -95,7 +96,8 @@ jobs:
             tests/hermes_cli/test_model_validation.py \
             tests/hermes_cli/test_inventory_reasoning_caps.py \
             tests/hermes_cli/test_model_switch_custom_providers.py \
-            tests/hermes_cli/test_inventory.py
+            tests/hermes_cli/test_inventory.py \
+            tests/hermes_cli/test_web_server.py
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.patch.outputs.changed == 'true'
@@ -211,10 +213,11 @@ jobs:
           - Authenticate custom-model metadata probes so live reasoning capabilities reach the Desktop model menu.
           - Synchronize stable model metadata exposed by 9Router into the gateway and Desktop configuration.
           - Accept backend readiness announcements on stderr, preventing false local connection timeouts while remote profiles are active.
+          - Expose the active per-spawn SSH session token so profiles and WebSocket requests authenticate with the same credential.
 
           ## Verification
 
-          - All 10 targeted Python provider, reasoning, inventory, and session test files passed.
+          - All 11 targeted Python provider, reasoning, inventory, session, and web-server test files passed.
           - The targeted Desktop model-menu test passed.
           - The Windows x64 NSIS build completed successfully.
 
