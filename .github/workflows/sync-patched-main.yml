@@ -35,7 +35,11 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git remote add upstream "https://x-access-token:${GH_TOKEN}@github.com/NousResearch/hermes-agent.git"
-          git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main
+          for attempt in 1 2 3; do
+            git fetch --no-tags --depth=1 upstream +refs/heads/main:refs/remotes/upstream/main && break
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 15))
+          done
           git switch --force-create main upstream/main
           git cherry-pick \
             edde429c8e \
@@ -100,7 +104,12 @@ jobs:
 
       - name: Publish fork main
         if: steps.patch.outputs.changed == 'true'
-        run: git push --force origin HEAD:main
+        run: |
+          for attempt in 1 2 3; do
+            git push --force origin HEAD:main && break
+            [ "$attempt" -eq 3 ] && exit 1
+            sleep $((attempt * 15))
+          done
 
   release-windows:
     name: Release Windows Desktop
