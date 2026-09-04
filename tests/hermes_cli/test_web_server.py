@@ -226,6 +226,32 @@ class TestSessionTokenInjection:
             assert ws._resolve_session_token() == "generated-token"
         token_urlsafe.assert_called_once_with(32)
 
+    def test_headless_root_reads_ssh_token_applied_after_routes_mount(self, monkeypatch):
+        import json
+        import re
+
+        from fastapi import FastAPI
+        from starlette.testclient import TestClient
+
+        import hermes_cli.web_server as ws
+        from hermes_cli.web_server_dashboard import mount_spa
+
+        monkeypatch.setenv("HERMES_SERVE_HEADLESS", "1")
+        application = FastAPI()
+        application.state.auth_required = False
+        mount_spa(application)
+
+        # start_server() applies the SSH token only after web_server and its
+        # routes have already imported.  The root handshake must expose that
+        # live token, not the random import-time value captured at mount.
+        monkeypatch.setattr(ws, "_SESSION_TOKEN", "s" * 64)
+        response = TestClient(application).get("/")
+        match = re.search(r"window\.__HERMES_SESSION_TOKEN__\s*=\s*(\"(?:\\\\.|[^\"\\\\])*\")", response.text)
+
+        assert response.status_code == 200
+        assert match is not None
+        assert json.loads(match.group(1)) == "s" * 64
+
     def test_session_token_resolution_preserves_loaded_app_auth(self, monkeypatch):
         import hermes_cli.web_server as ws
         from starlette.testclient import TestClient
