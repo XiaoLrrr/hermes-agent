@@ -76,9 +76,12 @@ def test_purge_evicts_hermes_prefixed_modules():
 
 def test_purge_protects_executing_modules():
     # The updater's own modules must survive — they're running this code.
+    import hermes_cli.update_receipt as update_receipt
+
     cli_main._purge_stale_hermes_modules()
     assert sys.modules.get("hermes_cli.update_cmd") is update_cmd
     assert sys.modules.get("hermes_cli.main") is cli_main
+    assert sys.modules.get("hermes_cli.update_receipt") is update_receipt
     assert "hermes_cli" in sys.modules
 
 
