@@ -70,8 +70,6 @@ jobs:
             542ae49e86 \
             db55cd95fe \
             3d5304a303 \
-            ed3b9aa621 \
-            30e3eaf83c \
             4b21cfe4cd
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
