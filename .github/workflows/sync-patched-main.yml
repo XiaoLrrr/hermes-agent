@@ -48,6 +48,8 @@ jobs:
             [ "$attempt" -eq 3 ] && exit 1
             sleep $((attempt * 15))
           done
+          git fetch --no-tags --depth=64 origin \
+            +refs/heads/patch-source:refs/remotes/origin/patch-source
           previous_main="$(git rev-parse origin/main)"
           upstream_sha="$(gh api repos/NousResearch/hermes-agent/commits/main --jq .sha)"
           if ! git cat-file -e "${upstream_sha}^{commit}"; then
