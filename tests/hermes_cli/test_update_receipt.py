@@ -39,6 +39,18 @@ def _finalize(outcome="success", fleet=None):
 
 
 class TestReceiptLifecycle:
+    def test_managed_update_correlation_reaches_persisted_receipt(
+        self, receipt_home, monkeypatch
+    ):
+        correlation = "5d923ef0-9f67-4fa2-8889-57649837a00a"
+        monkeypatch.setenv("HERMES_UPDATE_CORRELATION_ID", correlation)
+
+        ur.begin_update_receipt()
+        path = _finalize()
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        assert payload["correlation_id"] == correlation
+
     def test_begin_record_finalize_roundtrip(self, receipt_home):
         ur.begin_update_receipt()
         ur.record_step("pre_update_backup", True, "snapshot=abc123")
