@@ -59,7 +59,8 @@ jobs:
             db55cd95fe \
             3d5304a303 \
             ed3b9aa621 \
-            30e3eaf83c
+            30e3eaf83c \
+            4b21cfe4cd
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
@@ -99,6 +100,7 @@ jobs:
             tests/hermes_cli/test_model_switch_custom_providers.py \
             tests/hermes_cli/test_inventory.py \
             tests/hermes_cli/test_update_stale_module_purge.py \
+            tests/hermes_cli/test_update_receipt.py \
             tests/hermes_cli/test_web_server.py
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -217,10 +219,11 @@ jobs:
           - Accept backend readiness announcements on stderr, preventing false local connection timeouts while remote profiles are active.
           - Expose the active per-spawn SSH session token so profiles and WebSocket requests authenticate with the same credential.
           - Preserve the active update receipt across pending Gateway restarts so successful managed SSH updates are not reported as failures.
+          - Correlate durable CLI receipts with the active Desktop SSH update transaction.
 
           ## Verification
 
-          - All 12 targeted Python provider, reasoning, inventory, session, update, and web-server test files passed.
+          - All 13 targeted Python provider, reasoning, inventory, session, update, and web-server test files passed.
           - The targeted Desktop model-menu test passed.
           - The Windows x64 NSIS build completed successfully.
 
