@@ -55,7 +55,9 @@ class UpdateReceipt:
 
     def __init__(self) -> None:
         self.data: dict[str, Any] = {
-            "schema": 1, "started_at": _utc_now_iso(), "finished_at": None,
+            "schema": 1,
+            "correlation_id": os.environ.get("HERMES_UPDATE_CORRELATION_ID"),
+            "started_at": _utc_now_iso(), "finished_at": None,
             "argv": list(sys.argv), "pid": os.getpid(),
             "outcome": "running",  # running | success | partial | failed
             "pre_update": _code_identity(), "post_update": {},
