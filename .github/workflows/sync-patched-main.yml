@@ -66,11 +66,11 @@ jobs:
             5c9a87d52f \
             31a1e5d498 \
             1097c46f1b \
-            39e348da6e \
-            ecfcfe8552 \
-            e52612c94f \
-            d52dabe30b \
-            c6c38b02be
+            fb384324bd \
+            e12d666bc8 \
+            a9b3275e7a \
+            264fcf3886 \
+            09ed36e729
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
