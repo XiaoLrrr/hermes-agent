@@ -62,15 +62,15 @@ jobs:
           git update-ref refs/remotes/upstream/main "$upstream_sha"
           git switch --force-create main upstream/main
           git cherry-pick \
-            edde429c8e \
-            bb54232be3 \
-            8a96055140 \
-            c0c1a7007d \
-            f19a9493ec \
-            542ae49e86 \
-            db55cd95fe \
-            3d5304a303 \
-            4b21cfe4cd
+            235c2f5cdb \
+            5c9a87d52f \
+            31a1e5d498 \
+            1097c46f1b \
+            39e348da6e \
+            ecfcfe8552 \
+            e52612c94f \
+            d52dabe30b \
+            c6c38b02be
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
