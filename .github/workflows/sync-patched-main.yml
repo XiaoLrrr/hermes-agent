@@ -61,21 +61,18 @@ jobs:
           fi
           git update-ref refs/remotes/upstream/main "$upstream_sha"
           git switch --force-create main upstream/main
-          git cherry-pick \
-            399f7aad847cc8f3d5192ad4fe7771a58c34a0d3 \
-            ef718481dd12a15185ebc0a25f6334993331b115 \
-            810a48f21235af2fc5b5496dadf084ae31647625 \
-            526e489934381e441b1b4c67d32bec852ededc61 \
-            642a770847e79bd1eec3ee337b162910d81ba7cf \
-            89145f887736cc76ae68860722ee09f1f9d8d724 \
-            bfa5678a95a6189a2a0a61d3bea7570ca7ebb4c5 \
-            e3efe8209afeb7ca4003980ad69f1523ba9ecf0c \
-            dc63a497a6d0ad6c9e43a086f90bb85c72d1e5f2
+          # The patch list lives in a plain file on patch-source: a workflow file can only
+          # edit itself one run late, so an inline list can never be updated from patch-source
+          # when the previous stack stopped applying (the run dies in this very step).
+          git show origin/patch-source:.github/patched-commits.txt > /tmp/patched-commits.txt
+          mapfile -t patched < <(grep -vE '^[[:space:]]*(#|$)' /tmp/patched-commits.txt)
+          git cherry-pick "${patched[@]}"
           git rm -r --quiet .github/workflows
           git checkout origin/main -- .github/workflows
           git show origin/patch-source:.github/workflows/sync-patched-main.yml \
             > .github/workflows/sync-patched-main.yml
-          git add .github/workflows/sync-patched-main.yml
+          cp /tmp/patched-commits.txt .github/patched-commits.txt
+          git add .github/workflows/sync-patched-main.yml .github/patched-commits.txt
           git commit -m "ci: sync patched main from upstream"
           echo "upstream_sha=$(git rev-parse upstream/main)" >> "$GITHUB_OUTPUT"
           if [ "$(git rev-parse HEAD^{tree})" = "$(git rev-parse "$previous_main^{tree}")" ]; then

@@ -1,0 +1,14 @@
+# Fork-only commits cherry-picked onto upstream/main to rebuild the fork's main.
+# One commit per line, oldest first; comments and blank lines are ignored.
+# Read by .github/workflows/sync-patched-main.yml from the patch-source branch at run time,
+# so re-ported SHAs only need this file updated (no workflow-scope push required).
+# Base: upstream/main 7c6f21a5e12ba9b1c674ec9b410fa6b8c45de4f8 (Hermes v0.21.3).
+399f7aad847cc8f3d5192ad4fe7771a58c34a0d3
+ef718481dd12a15185ebc0a25f6334993331b115
+810a48f21235af2fc5b5496dadf084ae31647625
+526e489934381e441b1b4c67d32bec852ededc61
+642a770847e79bd1eec3ee337b162910d81ba7cf
+89145f887736cc76ae68860722ee09f1f9d8d724
+bfa5678a95a6189a2a0a61d3bea7570ca7ebb4c5
+e3efe8209afeb7ca4003980ad69f1523ba9ecf0c
+dc63a497a6d0ad6c9e43a086f90bb85c72d1e5f2
